@@ -95,6 +95,10 @@
         }
         .v-btn:hover { background: rgba(255,255,255,0.2); }
         .v-btn.active { background: white; color: black; font-weight: bold; }
+        
+        /* 保存按钮特殊强调样式 */
+        .btn-save { background: rgba(46, 213, 115, 0.2); border-color: var(--success); color: var(--success); }
+        .btn-save:hover { background: var(--success); color: white; }
 
         .bottom-clear {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
@@ -152,6 +156,7 @@
 
         <div class="v-btn" id="btn-eraser" onclick="toggleEraser()">橡皮擦</div>
         <div class="v-btn" onclick="undo()">撤销</div>
+        <div class="v-btn btn-save" onclick="saveImage()">💾 保存</div>
     </div>
 
     <button class="bottom-clear" onclick="clearAll()">🗑️ 一键清空画布</button>
@@ -185,7 +190,7 @@
     // --- 工具栏事件绑定 ---
     colorPicker.addEventListener('input', (e) => {
         brushColor = e.target.value;
-        if (isEraser) toggleEraser(); // 选择颜色时自动退出橡皮擦模式
+        if (isEraser) toggleEraser(); 
         updateCursorStyle();
     });
 
@@ -203,13 +208,10 @@
             cursor.style.background = brushColor;
             cursor.style.boxShadow = `0 0 15px ${brushColor}`;
         }
-        // 光标大小跟随笔刷粗细变化 (稍微放大一点以便看清)
         const visualSize = Math.max(10, brushSize); 
         cursor.style.width = visualSize + 'px';
         cursor.style.height = visualSize + 'px';
     }
-
-    // 初始化光标样式
     updateCursorStyle();
 
     // --- 核心控制逻辑 ---
@@ -287,17 +289,22 @@
             clearSelection();
         } else {
             isEraser = !isEraser;
-            if (isEraser) {
-                btnEraser.classList.add('active');
-            } else {
-                btnEraser.classList.remove('active');
-            }
+            if (isEraser) { btnEraser.classList.add('active'); } else { btnEraser.classList.remove('active'); }
             updateCursorStyle();
         }
     }
     function saveState() { if(history.length > 20) history.shift(); history.push(ctx.getImageData(0,0,canvasElement.width,canvasElement.height)); }
     function undo() { if(history.length > 0) ctx.putImageData(history.pop(), 0, 0); }
     function clearAll() { saveState(); ctx.clearRect(0,0,canvasElement.width,canvasElement.height); }
+
+    // --- 新增：保存图片功能 ---
+    function saveImage() {
+        const link = document.createElement('a');
+        // 生成基于当前时间的文件名，例如 air-painting-1681234567.png
+        link.download = `air-painting-${Date.now()}.png`; 
+        link.href = canvasElement.toDataURL('image/png');
+        link.click();
+    }
 
     // --- 鼠标框选 ---
     container.onmousedown = (e) => {
