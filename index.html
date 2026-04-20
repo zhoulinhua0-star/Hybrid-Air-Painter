@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hybrid Air Painter Pro - 智能创作系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <style>
+        :root {
+            --primary: #00e5ff;
+            --danger: #ff4757;
+            --success: #2ed573;
+            --glass: rgba(255, 255, 255, 0.1);
+            --blur: blur(12px);
+        }
+        body, html { 
+            margin: 0; padding: 0; overflow: hidden; 
+            background: #0F172A; 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; color: white;
+            user-select: none;
+        }
+        
+        .app-container {
+            position: relative; width: 85vw; height: 85vh;
+            background: #1E293B; border-radius: 24px; overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        /* 顶部全局控制栏 */
+        .top-nav {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 20px; z-index: 100; padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.4); backdrop-filter: var(--blur);
+            border-radius: 50px; border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .nav-btn {
+            padding: 8px 18px; border-radius: 20px; border: 1px solid transparent;
+            cursor: pointer; font-size: 14px; font-weight: 600;
+            transition: all 0.3s ease; display: flex; align-items: center; gap: 8px;
+        }
+        #btn-engine { background: rgba(255, 255, 255, 0.05); color: #ccc; }
+        #btn-engine.running { background: var(--danger); color: white; box-shadow: 0 0 15px var(--danger); }
+        #btn-engine.stopped { background: var(--success); color: white; box-shadow: 0 0 15px var(--success); }
+        #btn-track { background: rgba(255, 255, 255, 0.1); color: white; }
+        #btn-track.active { background: var(--primary); color: #000; box-shadow: 0 0 15px var(--primary); }
+        #btn-track:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        video { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            object-fit: cover; transform: scaleX(-1); opacity: 0.6; pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+        video.sleeping { opacity: 0; }
+        canvas#drawCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
+
+        /* 左侧高级工具栏 */
+        .toolbar {
+            position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+            display: flex; flex-direction: column; gap: 20px; z-index: 20;
+            background: rgba(0, 0, 0, 0.5); backdrop-filter: var(--blur);
+            padding: 20px 15px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
+            align-items: center;
+        }
+        
+        /* 颜色拾取器美化 */
+        input[type="color"] {
+            -webkit-appearance: none; border: none; width: 45px; height: 45px;
+            border-radius: 50%; cursor: pointer; background: transparent; padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; }
+
+        /* 粗细调节滑块美化 */
+        .slider-container { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+        .slider-label { font-size: 12px; color: #ccc; }
+        input[type="range"] {
+            -webkit-appearance: none; width: 80px; height: 4px; background: rgba(255,255,255,0.2);
+            border-radius: 2px; outline: none; cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+            background: var(--primary); cursor: pointer; transition: 0.2s;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+        .v-btn {
+            width: 100%; padding: 12px 0; border-radius: 12px;
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1);
+            color: white; font-size: 13px; cursor: pointer; transition: 0.2s; text-align: center;
+        }
+        .v-btn:hover { background: rgba(255,255,255,0.2); }
+        .v-btn.active { background: white; color: black; font-weight: bold; }
+
+        .bottom-clear {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 20; padding: 10px 30px; border-radius: 30px;
+            background: rgba(255, 71, 87, 0.15); border: 1px solid var(--danger);
+            color: var(--danger); font-weight: bold; cursor: pointer; transition: 0.3s;
+        }
+        .bottom-clear:hover { background: var(--danger); color: white; }
+
+        #sleep-overlay {
+            position: absolute; inset: 0; z-index: 80; background: rgba(10, 10, 18, 0.9);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.5s ease;
+        }
+        #sleep-overlay.show { opacity: 1; pointer-events: all; }
+
+        /* 动态光标 */
+        #cursor {
+            position: absolute; width: 12px; height: 12px; background: var(--primary);
+            border-radius: 50%; pointer-events: none; z-index: 10;
+            transform: translate(-50%, -50%); display: none;
+            box-shadow: 0 0 15px var(--primary); transition: width 0.1s, height 0.1s, background 0.2s;
+        }
+        #selection-box {
+            position: absolute; border: 2px dashed var(--primary); background: rgba(0, 229, 255, 0.1);
+            display: none; pointer-events: none; z-index: 15;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container" id="appContainer">
+    <div class="top-nav">
+        <button id="btn-engine" class="nav-btn stopped">🔌 启动系统 (引擎)</button>
+        <button id="btn-track" class="nav-btn" disabled>▶️ 开始创作 (软开关)</button>
+    </div>
+
+    <div id="sleep-overlay" class="show">
+        <h2 style="color: var(--primary)">系统休眠中</h2>
+        <p style="color: #666">点击上方“启动系统”以唤醒引擎</p>
+    </div>
+
+    <video id="input_video" class="sleeping" autoplay playsinline></video>
+    <canvas id="drawCanvas"></canvas>
+    <div id="cursor"></div>
+    <div id="selection-box"></div>
+
+    <div class="toolbar">
+        <input type="color" id="colorPicker" value="#00e5ff" title="选择颜色">
+        
+        <div class="slider-container">
+            <span class="slider-label">粗细 <span id="sizeValue">6</span>px</span>
+            <input type="range" id="sizeSlider" min="2" max="40" value="6">
+        </div>
+
+        <div class="v-btn" id="btn-eraser" onclick="toggleEraser()">橡皮擦</div>
+        <div class="v-btn" onclick="undo()">撤销</div>
+    </div>
+
+    <button class="bottom-clear" onclick="clearAll()">🗑️ 一键清空画布</button>
+</div>
+
+<script>
+    const videoElement = document.getElementById('input_video');
+    const canvasElement = document.getElementById('drawCanvas');
+    const container = document.getElementById('appContainer');
+    const ctx = canvasElement.getContext('2d');
+    const cursor = document.getElementById('cursor');
+    const selectionBox = document.getElementById('selection-box');
+    const overlay = document.getElementById('sleep-overlay');
+    
+    const btnEngine = document.getElementById('btn-engine');
+    const btnTrack = document.getElementById('btn-track');
+    const colorPicker = document.getElementById('colorPicker');
+    const sizeSlider = document.getElementById('sizeSlider');
+    const sizeValueDisplay = document.getElementById('sizeValue');
+    const btnEraser = document.getElementById('btn-eraser');
+
+    let isAppRunning = false, isTrackingActive = false;
+    let history = [];
+    let brushColor = colorPicker.value;
+    let brushSize = parseInt(sizeSlider.value);
+    let isEraser = false;
+    let targetX = 0, targetY = 0, currentX = 0, currentY = 0;
+    let lastDrawX = 0, lastDrawY = 0, isPinching = false, wasPinching = false, isHandDetected = false;
+    let isSelecting = false, selStartX = 0, selStartY = 0, activeSelection = null;
+
+    // --- 工具栏事件绑定 ---
+    colorPicker.addEventListener('input', (e) => {
+        brushColor = e.target.value;
+        if (isEraser) toggleEraser(); // 选择颜色时自动退出橡皮擦模式
+        updateCursorStyle();
+    });
+
+    sizeSlider.addEventListener('input', (e) => {
+        brushSize = parseInt(e.target.value);
+        sizeValueDisplay.innerText = brushSize;
+        updateCursorStyle();
+    });
+
+    function updateCursorStyle() {
+        if (isEraser) {
+            cursor.style.background = '#000';
+            cursor.style.boxShadow = `0 0 10px #fff`;
+        } else {
+            cursor.style.background = brushColor;
+            cursor.style.boxShadow = `0 0 15px ${brushColor}`;
+        }
+        // 光标大小跟随笔刷粗细变化 (稍微放大一点以便看清)
+        const visualSize = Math.max(10, brushSize); 
+        cursor.style.width = visualSize + 'px';
+        cursor.style.height = visualSize + 'px';
+    }
+
+    // 初始化光标样式
+    updateCursorStyle();
+
+    // --- 核心控制逻辑 ---
+    async function toggleEngine() {
+        if (!isAppRunning) {
+            try {
+                btnEngine.innerText = "⏳ 加载中...";
+                await camera.start();
+                isAppRunning = true; videoElement.classList.remove('sleeping'); overlay.classList.remove('show');
+                btnEngine.innerText = "🛑 停止引擎 (省电)"; btnEngine.className = "nav-btn running";
+                btnTrack.disabled = false; btnTrack.innerText = "▶️ 开始创作";
+            } catch (err) { alert("摄像头启动失败，请检查权限！"); }
+        } else {
+            await camera.stop();
+            isAppRunning = false; isTrackingActive = false;
+            videoElement.classList.add('sleeping'); overlay.classList.add('show');
+            btnEngine.innerText = "🔌 启动系统 (引擎)"; btnEngine.className = "nav-btn stopped";
+            btnTrack.disabled = true; btnTrack.innerText = "▶️ 开始创作"; btnTrack.classList.remove('active');
+            cursor.style.display = 'none';
+        }
+    }
+
+    function toggleTracking() {
+        if (!isAppRunning) return;
+        isTrackingActive = !isTrackingActive;
+        if (isTrackingActive) {
+            btnTrack.innerText = "⏸️ 暂停识别"; btnTrack.classList.add('active');
+        } else {
+            btnTrack.innerText = "▶️ 继续创作"; btnTrack.classList.remove('active'); cursor.style.display = 'none';
+        }
+    }
+
+    btnEngine.onclick = toggleEngine;
+    btnTrack.onclick = toggleTracking;
+
+    // --- 绘画与 MediaPipe 逻辑 ---
+    function onResults(results) {
+        if (!isAppRunning || !isTrackingActive || !results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+            isHandDetected = false; return;
+        }
+        isHandDetected = true;
+        const landmarks = results.multiHandLandmarks[0];
+        targetX = (1 - landmarks[8].x) * canvasElement.width;
+        targetY = landmarks[8].y * canvasElement.height;
+        const dist = Math.hypot(landmarks[8].x - landmarks[4].x, landmarks[8].y - landmarks[4].y);
+        isPinching = dist < 0.05;
+    }
+
+    function renderLoop() {
+        if (isAppRunning && isTrackingActive && isHandDetected) {
+            cursor.style.display = 'block';
+            currentX += (targetX - currentX) * 0.3;
+            currentY += (targetY - currentY) * 0.3;
+            cursor.style.left = currentX + 'px';
+            cursor.style.top = currentY + 'px';
+
+            if (isPinching && !isSelecting) {
+                if (!wasPinching) { saveState(); lastDrawX = currentX; lastDrawY = currentY; }
+                ctx.beginPath(); ctx.moveTo(lastDrawX, lastDrawY); ctx.lineTo(currentX, currentY);
+                ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+                ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : brushColor;
+                ctx.lineWidth = brushSize; ctx.lineCap = 'round'; ctx.stroke();
+                lastDrawX = currentX; lastDrawY = currentY;
+            }
+            wasPinching = isPinching;
+        } else { cursor.style.display = 'none'; }
+        requestAnimationFrame(renderLoop);
+    }
+
+    // --- 辅助功能 ---
+    function toggleEraser() {
+        if (activeSelection) {
+            saveState(); ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillRect(activeSelection.x, activeSelection.y, activeSelection.w, activeSelection.h);
+            clearSelection();
+        } else {
+            isEraser = !isEraser;
+            if (isEraser) {
+                btnEraser.classList.add('active');
+            } else {
+                btnEraser.classList.remove('active');
+            }
+            updateCursorStyle();
+        }
+    }
+    function saveState() { if(history.length > 20) history.shift(); history.push(ctx.getImageData(0,0,canvasElement.width,canvasElement.height)); }
+    function undo() { if(history.length > 0) ctx.putImageData(history.pop(), 0, 0); }
+    function clearAll() { saveState(); ctx.clearRect(0,0,canvasElement.width,canvasElement.height); }
+
+    // --- 鼠标框选 ---
+    container.onmousedown = (e) => {
+        if (e.target.closest('button') || e.target.closest('.toolbar')) return;
+        isSelecting = true; const r = container.getBoundingClientRect();
+        selStartX = e.clientX - r.left; selStartY = e.clientY - r.top;
+        selectionBox.style.display = 'block';
+    };
+    container.onmousemove = (e) => {
+        if (!isSelecting) return; const r = container.getBoundingClientRect();
+        const curX = e.clientX - r.left, curY = e.clientY - r.top;
+        const x = Math.min(curX, selStartX), y = Math.min(curY, selStartY);
+        const w = Math.abs(curX - selStartX), h = Math.abs(curY - selStartY);
+        selectionBox.style.left = x+'px'; selectionBox.style.top = y+'px';
+        selectionBox.style.width = w+'px'; selectionBox.style.height = h+'px';
+        activeSelection = {x, y, w, h};
+    };
+    container.onmouseup = () => { isSelecting = false; if(activeSelection && activeSelection.w < 5) clearSelection(); };
+    function clearSelection() { selectionBox.style.display='none'; activeSelection=null; }
+
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+    hands.onResults(onResults);
+    const camera = new Camera(videoElement, { onFrame: async () => { if(isAppRunning) await hands.send({image: videoElement}); }, width: 1280, height: 720 });
+    
+    window.addEventListener('resize', () => {
+        const r = container.getBoundingClientRect();
+        canvasElement.width = r.width; canvasElement.height = r.height;
+    });
+    window.dispatchEvent(new Event('resize'));
+    renderLoop();
+</script>
+</body>
+</html>
