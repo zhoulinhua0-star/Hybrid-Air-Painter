@@ -2,7 +2,7 @@
 
 > A high-performance, browser-based AR drawing board. Hand gestures drive the art; the mouse handles the precision.
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Click_Here-blue?style=for-the-badge)](https://your-username.vercel.app/)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Click_Here-blue?style=for-the-badge)](https://hybrid-air-painter.vercel.app/)
 
 Hybrid Air Painter utilizes webcam-based hand tracking to let you draw in mid-air. It features a "Hybrid UI" that offloads complex tool selection to the physical mouse, and a Dual-State Power system to protect your device's CPU/battery when not actively drawing.
 
